@@ -34,6 +34,10 @@ async def chat(request: Request):
     import os
     from openai import AzureOpenAI
 
+    search_endpoint = os.getenv("SEARCH_ENDPOINT")
+    search_index = os.getenv("SEARCH_INDEX")
+    search_key = os.getenv("SEARCH_KEY")
+    
     client = AzureOpenAI(
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT"), 
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
@@ -46,7 +50,22 @@ async def chat(request: Request):
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": json["message"]}
+        ],
+        extra_body={
+        "data_sources": [
+            {
+                "type": "azure_search",
+                "parameters": {
+                    "endpoint": search_endpoint,
+                    "index_name": search_index,
+                    "authentication": {
+                        "type": "api_key",
+                        "key": search_key
+                    }
+                }
+            }
         ]
+        }
     )
 
     response.choices[0].message.content
