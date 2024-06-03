@@ -37,7 +37,7 @@ async def chat(request: Request):
     search_endpoint = os.getenv("SEARCH_ENDPOINT")
     search_index = os.getenv("SEARCH_INDEX")
     search_key = os.getenv("SEARCH_KEY")
-    
+
     client = AzureOpenAI(
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT"), 
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
@@ -65,7 +65,12 @@ async def chat(request: Request):
                 }
             }
         ]
-        }
+        },
+        temperature= 0,
+        top_p= 1,
+        max_tokens= 800,
+        stop=None,
+        stream=False
     )
 
     response.choices[0].message.content
