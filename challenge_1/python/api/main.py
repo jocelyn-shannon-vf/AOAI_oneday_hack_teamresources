@@ -6,6 +6,16 @@ import requests
 import dotenv
 import os
 from openai import AzureOpenAI
+from array import array
+from PIL import Image, ImageDraw
+import sys
+import time
+from matplotlib import pyplot as plt
+import numpy as np
+
+from azure.cognitiveservices.vision.computervision import ComputerVisionClient
+from azure.cognitiveservices.vision.computervision.models import VisualFeatureTypes
+from msrest.authentication import CognitiveServicesCredentials
 
 app = FastAPI()
 
@@ -22,6 +32,108 @@ app.add_middleware(
 @app.get("/")
 async def main():
     return FileResponse("public/index.html")
+
+def analyzeImage():
+
+    image_file = 'images/person.jpg'
+    
+    
+    cog_endpoint = os.getenv('COG_SERVICE_ENDPOINT')
+    cog_key = os.getenv('COG_SERVICE_KEY')
+
+    credential = CognitiveServicesCredentials(cog_key) 
+    cv_client = ComputerVisionClient(cog_endpoint, credential)
+
+
+    print('Analyzing', image_file)
+
+    # Specify features to be retrieved
+    features = [VisualFeatureTypes.description,
+                VisualFeatureTypes.tags,
+                VisualFeatureTypes.categories,
+                VisualFeatureTypes.brands,
+                VisualFeatureTypes.objects,
+                VisualFeatureTypes.adult]
+    
+
+    # Get image analysis
+    with open(image_file, mode="rb") as image_data:
+        print("reaching point check")
+        analysis = cv_client.analyze_image_in_stream(image_data , features)
+        print(analysis)
+
+    # Get image description
+    for caption in analysis.description.captions:
+        print("Description: '{}' (confidence: {:.2f}%)".format(caption.text, caption.confidence * 100))
+
+
+    tagList = list()
+    
+    # Get image tags
+    if (len(analysis.tags) > 0):
+        print("Tags: ")
+        for tag in analysis.tags:
+            tagList.append(tag.name)
+            print(" -'{}' (confidence: {:.2f}%)".format(tag.name, tag.confidence * 100))
+            
+    # Get image categories
+    if (len(analysis.categories) > 0):
+        print("Categories:")
+        landmarks = []
+        for category in analysis.categories:
+            # Print the category
+            print(" -'{}' (confidence: {:.2f}%)".format(category.name, category.score * 100))
+            if category.detail:
+                # Get landmarks in this category
+                if category.detail.landmarks:
+                    for landmark in category.detail.landmarks:
+                        if landmark not in landmarks:
+                            landmarks.append(landmark)
+
+        # If there were landmarks, list them
+        if len(landmarks) > 0:
+            print("Landmarks:")
+            for landmark in landmarks:
+                print(" -'{}' (confidence: {:.2f}%)".format(landmark.name, landmark.confidence * 100))
+
+
+    # Get brands in the image
+    if (len(analysis.brands) > 0):
+        print("Brands: ")
+        for brand in analysis.brands:
+            print(" -'{}' (confidence: {:.2f}%)".format(brand.name, brand.confidence * 100))
+    
+    # Get objects in the image
+    if len(analysis.objects) > 0:
+        print("Objects in image:")
+
+        # Prepare image for drawing
+        fig = plt.figure(figsize=(8, 8))
+        plt.axis('off')
+        image = Image.open(image_file)
+        draw = ImageDraw.Draw(image)
+        color = 'cyan'
+        for detected_object in analysis.objects:
+            # Print object name
+            print(" -{} (confidence: {:.2f}%)".format(detected_object.object_property, detected_object.confidence * 100))
+            
+            # Draw object bounding box
+            r = detected_object.rectangle
+            bounding_box = ((r.x, r.y), (r.x + r.w, r.y + r.h))
+            draw.rectangle(bounding_box, outline=color, width=3)
+            plt.annotate(detected_object.object_property,(r.x, r.y), backgroundcolor=color)
+        # Save annotated image
+        plt.imshow(image)
+        outputfile = 'objects.jpg'
+        fig.savefig(outputfile)
+        print('  Results saved in', outputfile)
+
+    # Get moderation ratings
+    ratings = 'Ratings:\n -Adult: {}\n -Racy: {}\n -Gore: {}'.format(analysis.adult.is_adult_content,
+                                                                        analysis.adult.is_racy_content,
+                                                                        analysis.adult.is_gory_content)
+    print(tagList)
+    return tagList
 
 def chat_method(message:str):
     dotenv.load_dotenv()
@@ -89,8 +201,11 @@ async def generateImage(request: Request):
     #{'face': 'round', 'eyebrows': 'thick', 'eye_color': 'blue', 'facial_features': 'strong jaw', 'hair': 'long green', 'clothes': 'pijamas', 'height': '3 foot', 'weight': 'heavy', 'other_apparel': ''} 
     print(json)
 
+    dotenv.load_dotenv()
+    tagList = analyzeImage()
+
     dalle_request = f"""Generate me a prompt that I can send to the DALL-E model that will create 
-    a photorealistic avatar image with the following attributes: {face}"""
+    a photorealistic avatar image with the following attributes: {tagList}"""
 
     response = chat_method(dalle_request)
 
