@@ -332,25 +332,8 @@ async def chat(request: Request):
     {
         "type": "function",
         "function": {
-            "name": "chat_method",
-            "description": "Getting general knowledge",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "Message to be sent to the LLM",
-                    }
-                },
-                "required": ["message"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "call_bike_repair",
-            "description": "Getting information to assist a bike repair",
+            "description": "Retrieve bike manuals from the Azure Cognitive Search index",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -366,12 +349,18 @@ async def chat(request: Request):
     ]
 
     available_functions = {
-        "chat_method": chat_method,
         "call_bike_repair": call_bike_repair
     }
 
     messages=[
-            {"role": "system", "content": "You are a helpful assistant. You have access to Azure AI Search to find information on bike repairs."},
+            {"role": "system", "content": 
+             
+
+            """Assistant is a large language model designed to help users.
+
+You have access to an Azure Cognitive Search index if question about bike manual data. You can search for it. Tell what source you used to answer the question
+"""
+},
             {"role": "user", "content": json['message']}
         ]
     tool_choice = "auto"
