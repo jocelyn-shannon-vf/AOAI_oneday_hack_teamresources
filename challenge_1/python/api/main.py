@@ -161,6 +161,23 @@ def chat_method(message:str):
 
     return response
 
+def recommenad_mbx():
+    return """
+        These are product descriptions that you need to serve when asked for recommendation:
+        
+        Serious Rockville Disc Mountain Bike
+        
+        The Serious Rockville Disc Mountain Bike is designed for trail enthusiasts who demand top performance and reliability. Featuring a lightweight alloy frame, Fox 34 Float Performance forks with 130mm of travel, and SRAM GX Eagle 12-speed drivetrain, it offers smooth handling and precise control. The SRAM G2 RSC hydraulic disc brakes and tubeless-ready rims with Schwalbe Nobby Nic tires enhance stopping power and grip. Available in sizes S, M, L, and XL, this bike is perfect for cross-country and trail riding.
+        
+        Jordaan+ eBike
+        
+        The Jordaan+ eBike combines power, style, and versatility, ideal for urban commuting and moderate trails. It features a lightweight alloy frame, Bosch Performance Line CX motor, and 625Wh battery for extended range. The Suntour XCR 34 AIR forks with 100mm of travel and Shimano Deore XT 12-speed drivetrain ensure smooth handling and efficient climbing. Equipped with Shimano Deore XT hydraulic disc brakes, tubeless-ready rims, and Schwalbe Super Moto-X tires, it offers enhanced grip and control. Additional features include integrated LED lights, a cargo rack, fenders, and a Bosch Kiox display. Available in sizes S, M, L, and XL.
+        
+        Woom Original Road Bike
+        
+        The Woom Original Road Bike is designed for road cycling enthusiasts, offering top performance, comfort, and reliability. It features an ultra-lightweight alloy frame with aerodynamic geometry, carbon fiber fork, and Shimano Ultegra R8000 11-speed drivetrain for smooth and precise shifting. The Shimano Ultegra R8000 hydraulic disc brakes provide powerful stopping power, while the tubeless-ready rims with Continental Grand Prix 5000 tires offer superior grip and reduced rolling resistance. Ergonomic design elements ensure comfort on long rides. Available in sizes S, M, L, and XL, it is perfect for competitive racing and long-distance rides.
+        """
+
 
 def call_bike_repair(message: str):
     dotenv.load_dotenv()
@@ -236,6 +253,32 @@ def check_args(function, args):
     return True
 
 import json
+
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "call_bike_repair",
+            "description": "Answer questions regarding bike repairs",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "question about bike repairs",
+                    },
+                    }
+                },
+                "required": ["message"],
+            },
+        },{
+        "type": "function",
+        "function": {
+            "name": "recommenad_mbx",
+            "description": "Recommends mountain bike"
+            },
+        }
+    ]
 
 def run_conversation(messages, tools, available_functions):
     # Step 1: send the conversation and available functions to GPT
@@ -328,39 +371,21 @@ async def chat(request: Request):
     print(json)
 
     dotenv.load_dotenv()
-    tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "call_bike_repair",
-            "description": "Retrieve bike manuals from the Azure Cognitive Search index",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "Message to be sent to the LLM",
-                    },
-                    }
-                },
-                "required": ["message"],
-            },
-        },
-    ]
+    
 
     available_functions = {
-        "call_bike_repair": call_bike_repair
+        "call_bike_repair": call_bike_repair,
+        "recommenad_mbx":recommenad_mbx
     }
 
     messages=[
             {"role": "system", "content": 
              
 
-            """Assistant is a large language model designed to help users.
-
-You have access to an Azure Cognitive Search index if question about bike manual data. You can search for it. Tell what source you used to answer the question
-"""
-},
+            """
+            You are a helpful assistant designed to help customers with all their requests. 
+            """
+            },
             {"role": "user", "content": json['message']}
         ]
     tool_choice = "auto"
