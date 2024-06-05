@@ -80,68 +80,67 @@ SELECT TOP 1 name FROM products ORDER BY rating DESC
 This query selects the product name from the `products` table and orders the results by the `rating` column in descending order. The `TOP 1` clause ensures that only the highest-rated product is returned, which is 'UltraWidget'.
 
 """
+def sql_llm_connection(question: str):
+    dotenv.load_dotenv()
 
-dotenv.load_dotenv()
+    def printmd(string):
+        display(Markdown(string))
 
-def printmd(string):
-    display(Markdown(string))
+    # Configuration for the database connection
+    db_config = {
+        'drivername': 'mssql+pyodbc',
+        'username': os.environ["SQL_SERVER_USERNAME"] + '@' + os.environ["SQL_SERVER_NAME"],
+        'password': os.environ["SQL_SERVER_PASSWORD"],
+        'host': os.environ["SQL_SERVER_NAME"],
+        'port': 1433,
+        'database': os.environ["SQL_SERVER_DATABASE"],
+        'query': {'driver': 'ODBC Driver 17 for SQL Server'},
+    }
 
-# Configuration for the database connection
-db_config = {
-    'drivername': 'mssql+pyodbc',
-    'username': os.environ["SQL_SERVER_USERNAME"] + '@' + os.environ["SQL_SERVER_NAME"],
-    'password': os.environ["SQL_SERVER_PASSWORD"],
-    'host': os.environ["SQL_SERVER_NAME"],
-    'port': 1433,
-    'database': os.environ["SQL_SERVER_DATABASE"],
-    'query': {'driver': 'ODBC Driver 17 for SQL Server'},
-}
+    # Create a URL object for connecting to the database
+    db_url = URL.create(**db_config)
 
-# Create a URL object for connecting to the database
-db_url = URL.create(**db_config)
-
-# Connect to the Azure SQL Database using the URL string
-engine = create_engine(db_url)
+    # Connect to the Azure SQL Database using the URL string
+    engine = create_engine(db_url)
 
 
-# Test the connection using the SQLAlchemy 2.0 execution style
-with engine.connect() as conn:
+    # Test the connection using the SQLAlchemy 2.0 execution style
+    with engine.connect() as conn:
+        try:
+            # Use the text() construct for safer SQL execution
+            result = conn.execute(text("SELECT @@VERSION"))
+            version = result.fetchone()
+            print("Connection successful!")
+            print(version)
+        except Exception as e:
+            print(e)
+
+    llm = AzureChatOpenAI(deployment_name=os.environ["CHAT_COMPLETIONS_DEPLOYMENT_NAME"], temperature=0.5, max_tokens=2000)
+
+    db = SQLDatabase.from_uri(db_url)
+
+    QUESTION = question
+
+    toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+
+
+    agent_executor = create_sql_agent(
+        prefix=MSSQL_AGENT_PREFIX,
+        llm=llm,
+        #db=db,
+        toolkit=toolkit,
+        top_k=30,
+        #agent_type="tool-calling",
+        verbose=True,
+        handle_parsing_errors=True
+    )
+
+
     try:
-        # Use the text() construct for safer SQL execution
-        result = conn.execute(text("SELECT @@VERSION"))
-        version = result.fetchone()
-        print("Connection successful!")
-        print(version)
+        response = agent_executor.invoke(QUESTION) 
     except Exception as e:
         print(e)
-
-llm = AzureChatOpenAI(deployment_name=os.environ["GPT35_DEPLOYMENT_NAME"], temperature=0.5, max_tokens=2000)
-
-db = SQLDatabase.from_uri(db_url)
-
-QUESTION = """
-Fetch me 10 records from dbo.orders table grouped by customer_id 
-"""
-
-toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-
-
-agent_executor = create_sql_agent(
-    prefix=MSSQL_AGENT_PREFIX,
-    llm=llm,
-    #db=db,
-    toolkit=toolkit,
-    top_k=30,
-    #agent_type="tool-calling",
-    verbose=True,
-    handle_parsing_errors=True
-)
-
-
-try:
-    response = agent_executor.invoke(QUESTION) 
-except Exception as e:
-    print(e)
-    response = str(e)
-
-printmd(response["output"])
+        response = str(e)
+        
+    #printmd(response['output'])
+    return response

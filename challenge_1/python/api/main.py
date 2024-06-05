@@ -180,6 +180,16 @@ def chat_method(message:str):
     return response
 
 
+def sql_query(question):
+    from db_connected_bot import MSSQL_AGENT_PREFIX, sql_llm_connection
+
+    response = sql_llm_connection(question)
+    print(type(response))
+    print(response)
+    print(response['output'])
+    return response['output']
+
+
 # chatbot API to be extended with OpenAI code
 @app.post("/chat")
 async def chat(request: Request):
@@ -187,11 +197,13 @@ async def chat(request: Request):
     print(json)
     #dotenv.load_dotenv()
 
-    response = chat_method(json['message'])
+    #response = chat_method(json['message'])
+    response = sql_query(json['message'])
 
-    response.choices[0].message.content
-
-    return {"message": response.choices[0].message.content}
+    #response.choices[0].message.content
+    
+    return {'message': response }
+    #return {"message": response.choices[0].message.content}
 
 # Image generattion API to be extended with OpenAI code
 @app.post("/generateImage")
