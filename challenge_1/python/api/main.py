@@ -137,9 +137,6 @@ def analyzeImage():
 
 def chat_method(message:str):
     dotenv.load_dotenv()
-    search_endpoint = os.getenv("SEARCH_ENDPOINT")
-    search_index = os.getenv("SEARCH_INDEX")
-    search_key = os.getenv("SEARCH_KEY")
 
     client = AzureOpenAI(
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT"), 
@@ -154,21 +151,6 @@ def chat_method(message:str):
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": message}
         ],
-        #extra_body={
-        #"data_sources": [
-        #    {
-        #        "type": "azure_search",
-        #        "parameters": {
-        #            "endpoint": search_endpoint,
-        #            "index_name": search_index,
-        #            "authentication": {
-        #                "type": "api_key",
-        #                "key": search_key
-        #            }
-        #        }
-        #    }
-        #]
-        #},
         temperature= 0,
         top_p= 1,
         max_tokens= 800,
@@ -180,6 +162,50 @@ def chat_method(message:str):
     return response
 
 
+def call_bike_repair(message: str):
+    dotenv.load_dotenv()
+    
+    search_endpoint = os.getenv("SEARCH_ENDPOINT")
+    search_index = os.getenv("SEARCH_INDEX")
+    search_key = os.getenv("SEARCH_KEY")
+
+    client = AzureOpenAI(
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT"), 
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
+    api_version="2024-02-15-preview",
+    azure_deployment="turbogpt"
+    )
+    
+    response = client.chat.completions.create(
+        model="turbogpt", # model = "deployment_name".
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": message}
+        ],
+        extra_body={
+        "data_sources": [
+            {
+                "type": "azure_search",
+                "parameters": {
+                    "endpoint": search_endpoint,
+                    "index_name": search_index,
+                    "authentication": {
+                        "type": "api_key",
+                        "key": search_key
+                    }
+                }
+            }
+        ]
+        },
+        temperature= 0,
+        top_p= 1,
+        max_tokens= 800,
+        stop=None,
+        stream=False
+    )
+
+    return response.choices[0].message.content
+
 def sql_query(question):
     from db_connected_bot import MSSQL_AGENT_PREFIX, sql_llm_connection
 
@@ -190,19 +216,176 @@ def sql_query(question):
     return response['output']
 
 
+import inspect
+
+
+# helper method used to check if the correct arguments are provided to a function
+def check_args(function, args):
+    sig = inspect.signature(function)
+    params = sig.parameters
+
+    # Check if there are extra arguments
+    for name in args:
+        if name not in params:
+            return False
+    # Check if the required arguments are provided
+    for name, param in params.items():
+        if param.default is param.empty and name not in args:
+            return False
+
+    return True
+
+import json
+
+def run_conversation(messages, tools, available_functions):
+    # Step 1: send the conversation and available functions to GPT
+    client = AzureOpenAI(
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT"), 
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
+    api_version="2024-02-15-preview",
+    azure_deployment="turbogpt"
+    )
+    
+    response = client.chat.completions.create(
+        model="turbogpt",
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
+    )
+
+    response_message = response.choices[0].message
+    print(response_message)
+    # Step 2: check if GPT wanted to call a function
+    if response_message.tool_calls:
+        print("Recommended Function call:")
+        print(response_message.tool_calls[0])
+        print()
+
+        # Step 3: call the function
+        # Note: the JSON response may not always be valid; be sure to handle errors
+
+        function_name = response_message.tool_calls[0].function.name
+
+        # verify function exists
+        if function_name not in available_functions:
+            return "Function " + function_name + " does not exist"
+        function_to_call = available_functions[function_name]
+
+        # verify function has correct number of arguments
+        function_args = json.loads(response_message.tool_calls[0].function.arguments)
+        if check_args(function_to_call, function_args) is False:
+            return "Invalid number of arguments for function: " + function_name
+        function_response = function_to_call(**function_args)
+
+        print("Output of function call:")
+        print(function_response)
+        print()
+
+        # Step 4: send the info on the function call and function response to GPT
+
+        # adding assistant response to messages
+        messages.append(
+            {
+                "role": response_message.role,
+                "function_call": {
+                    "name": response_message.tool_calls[0].function.name,
+                    "arguments": response_message.tool_calls[0].function.arguments,
+                },
+                "content": None,
+            }
+        )
+
+        # adding function response to messages
+        messages.append(
+            {
+                "role": "function",
+                "name": function_name,
+                "content": function_response,
+            }
+        )  # extend conversation with function response
+
+        print("Messages in second request:")
+        for message in messages:
+            print(message)
+        print()
+
+        second_response = client.chat.completions.create(
+            messages=messages,
+            model="turbogpt",
+        )  # get a new response from GPT where it can see the function response
+
+        return second_response
+    else:
+        return response_message.content
+    
+
+
 # chatbot API to be extended with OpenAI code
 @app.post("/chat")
 async def chat(request: Request):
+
     json = await request.json()
     print(json)
-    #dotenv.load_dotenv()
 
+    dotenv.load_dotenv()
+    tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "chat_method",
+            "description": "Getting general knowledge",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Message to be sent to the LLM",
+                    }
+                },
+                "required": ["message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "call_bike_repair",
+            "description": "Getting information to assist a bike repair",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Message to be sent to the LLM",
+                    },
+                    }
+                },
+                "required": ["message"],
+            },
+        },
+    ]
+
+    available_functions = {
+        "chat_method": chat_method,
+        "call_bike_repair": call_bike_repair
+    }
+
+    messages=[
+            {"role": "system", "content": "You are a helpful assistant. You have access to Azure AI Search to find information on bike repairs."},
+            {"role": "user", "content": json['message']}
+        ]
+    tool_choice = "auto"
+
+    response = run_conversation(messages, tools=tools, available_functions=available_functions)
+
+    print(response)
+    return response
     #response = chat_method(json['message'])
-    response = sql_query(json['message'])
+    #response = sql_query(json['message'])
 
     #response.choices[0].message.content
     
-    return {'message': response }
+    #return {'message': response }
     #return {"message": response.choices[0].message.content}
 
 # Image generattion API to be extended with OpenAI code
