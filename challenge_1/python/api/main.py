@@ -179,6 +179,7 @@ def recommenad_mbx():
         """
 
 
+
 def call_bike_repair(message: str):
     dotenv.load_dotenv()
     
@@ -200,19 +201,24 @@ def call_bike_repair(message: str):
             {"role": "user", "content": message}
         ],
         extra_body={
-        "data_sources": [
-            {
-                "type": "azure_search",
-                "parameters": {
-                    "endpoint": search_endpoint,
-                    "index_name": search_index,
-                    "authentication": {
-                        "type": "api_key",
-                        "key": search_key
-                    }
-                }
-            }
-        ]
+            "data_sources": [
+                            {
+                                "type": "azure_search",
+                                "parameters": {
+                                    "endpoint": search_endpoint,
+                                    "index_name": search_index,
+                                    "semantic_configuration": search_index + "-semantic-configuration",
+                                    "authentication": {
+                                        "type": "api_key",
+                                        "key": search_key
+                                    },
+                                    "embedding_dependency": {
+                                        "type": "deployment_name",
+                                        "deployment_name": "text-embedding-ada-002"
+                                    }
+                                }
+                            }
+                        ]
         },
         temperature= 0,
         top_p= 1,
@@ -297,7 +303,9 @@ def run_conversation(messages, tools, available_functions):
     )
 
     response_message = response.choices[0].message
-    print(response_message)
+    print(response)
+    print(type(response_message))
+    print("RESPONSE FROM COMPLETIONS CREATE:"+str(response_message))
     # Step 2: check if GPT wanted to call a function
     if response_message.tool_calls:
         print("Recommended Function call:")
@@ -393,14 +401,14 @@ async def chat(request: Request):
     response = run_conversation(messages, tools=tools, available_functions=available_functions)
 
     print(response)
-    return response
+    #return response
     #response = chat_method(json['message'])
     #response = sql_query(json['message'])
 
     #response.choices[0].message.content
     
     #return {'message': response }
-    #return {"message": response.choices[0].message.content}
+    return {"message": response.choices[0].message.content}
 
 # Image generattion API to be extended with OpenAI code
 @app.post("/generateImage")
